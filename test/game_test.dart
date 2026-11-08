@@ -64,13 +64,19 @@ void main() {
 
   test('fifty and seventy-five move rules', () {
     expect(Game('4k3/8/8/8/8/8/8/R3K3 w - - 99 80').status, GameStatus.ongoing);
-    expect(Game('4k3/8/8/8/8/8/8/R3K3 w - - 100 80').status,
-        GameStatus.fiftyMoveRule);
-    expect(Game('4k3/8/8/8/8/8/8/R3K3 w - - 150 80').status,
-        GameStatus.seventyFiveMoveRule);
+    expect(
+      Game('4k3/8/8/8/8/8/8/R3K3 w - - 100 80').status,
+      GameStatus.fiftyMoveRule,
+    );
+    expect(
+      Game('4k3/8/8/8/8/8/8/R3K3 w - - 150 80').status,
+      GameStatus.seventyFiveMoveRule,
+    );
     // Checkmate on the fiftieth move takes precedence.
-    expect(Game('R5k1/5ppp/8/8/8/8/8/4K3 b - - 100 80').status,
-        GameStatus.checkmate);
+    expect(
+      Game('R5k1/5ppp/8/8/8/8/8/4K3 b - - 100 80').status,
+      GameStatus.checkmate,
+    );
   });
 
   group('insufficient material', () {

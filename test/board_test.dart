@@ -15,8 +15,10 @@ void main() {
     });
 
     test('defaults missing move counters', () {
-      expect(Board.fromFen('4k3/8/8/8/8/8/8/4K3 w - -').fen,
-          '4k3/8/8/8/8/8/8/4K3 w - - 0 1');
+      expect(
+        Board.fromFen('4k3/8/8/8/8/8/8/4K3 w - -').fen,
+        '4k3/8/8/8/8/8/8/4K3 w - - 0 1',
+      );
     });
 
     test('drops castling rights that the placement contradicts', () {
@@ -56,10 +58,14 @@ void main() {
       final b = Board();
       b.make(b.moveFromUci('e2e4')!);
       expect(
-          b.fen, 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1');
+        b.fen,
+        'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1',
+      );
       b.make(b.moveFromUci('g8f6')!);
-      expect(b.fen,
-          'rnbqkb1r/pppppppp/5n2/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 1 2');
+      expect(
+        b.fen,
+        'rnbqkb1r/pppppppp/5n2/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 1 2',
+      );
       b.unmake();
       b.unmake();
       expect(b.fen, startFen);
@@ -68,7 +74,8 @@ void main() {
 
     test('en passant capture removes the passed pawn', () {
       final b = Board.fromFen(
-          'rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3');
+        'rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3',
+      );
       final m = b.moveFromUci('e5f6')!;
       expect(m.isEnPassant, isTrue);
       b.make(m);
@@ -108,7 +115,8 @@ void main() {
 
     test('checkmate and stalemate have no legal moves', () {
       final mate = Board.fromFen(
-          'rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3');
+        'rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3',
+      );
       expect(mate.inCheck, isTrue);
       expect(mate.legalMoves(), isEmpty);
       final stale = Board.fromFen('7k/5Q2/6K1/8/8/8/8/8 b - - 0 1');

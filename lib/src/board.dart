@@ -13,8 +13,14 @@ final class _Undo {
   final int epSquare;
   final int halfmove;
   final int hash;
-  const _Undo(this.move, this.captured, this.castling, this.epSquare,
-      this.halfmove, this.hash);
+  const _Undo(
+    this.move,
+    this.captured,
+    this.castling,
+    this.epSquare,
+    this.halfmove,
+    this.hash,
+  );
 }
 
 /// Castling rights that survive a piece leaving or arriving on each square.
