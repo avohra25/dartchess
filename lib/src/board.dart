@@ -1,5 +1,6 @@
 import 'move.dart';
 import 'types.dart';
+import 'zobrist.dart';
 
 const String startFen =
     'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -11,8 +12,9 @@ final class _Undo {
   final int castling;
   final int epSquare;
   final int halfmove;
-  const _Undo(
-      this.move, this.captured, this.castling, this.epSquare, this.halfmove);
+  final int hash;
+  const _Undo(this.move, this.captured, this.castling, this.epSquare,
+      this.halfmove, this.hash);
 }
 
 /// Castling rights that survive a piece leaving or arriving on each square.
@@ -38,6 +40,7 @@ class Board {
   int _ep = -1;
   int _halfmove = 0;
   int _fullmove = 1;
+  int _hash = 0;
 
   Board._();
 
@@ -65,8 +68,51 @@ class Board {
   int pieceAt(int sq) => _sq[sq];
   int get ply => _history.length;
 
-  /// The last move made with [make], or null.
-  Move? get lastMove => _history.isEmpty ? null : _history.last.move;
+  /// 64-bit Zobrist hash of the position (placement, side to move, castling
+  /// rights and a *capturable* en passant square), maintained incrementally.
+  int get hash => _hash;
+
+  /// The last move made with [make], or null (also after [makeNull]).
+  Move? get lastMove {
+    if (_history.isEmpty) return null;
+    final m = _history.last.move;
+    return identical(m, _nullMove) ? null : m;
+  }
+
+  /// Whether the side to move has any legal move (cheaper than
+  /// `legalMoves().isNotEmpty` because it stops at the first one).
+  bool get hasLegalMove {
+    final us = _side;
+    for (final m in pseudoLegalMoves()) {
+      make(m);
+      final ok = !isAttacked(_kings[us], us ^ 1);
+      unmake();
+      if (ok) return true;
+    }
+    return false;
+  }
+
+  /// Neither side can possibly checkmate: K v K, K+minor v K, or only
+  /// same-coloured bishops besides the kings.
+  bool get insufficientMaterial {
+    var minors = 0, knights = 0;
+    var bishopColors = 0; // bit 0: light-square bishop, bit 1: dark
+    for (var i = 0; i < 64; i++) {
+      final p = _sq[from64(i)];
+      switch (pieceType(p)) {
+        case pawn || rook || queen:
+          return false;
+        case knight:
+          minors++;
+          knights++;
+        case bishop:
+          minors++;
+          bishopColors |= ((i >> 3) + (i & 7)).isEven ? 2 : 1;
+      }
+    }
+    if (minors <= 1) return true;
+    return knights == 0 && bishopColors != 3;
+  }
 
   void _loadFen(String fen) {
     final parts = fen.trim().split(RegExp(r'\s+'));
@@ -153,6 +199,44 @@ class Board {
     if (isAttacked(_kings[_side ^ 1], _side)) {
       throw FormatException('side not to move is in check', fen);
     }
+    _hash = computeHash();
+  }
+
+  /// Hash contribution of the en passant square. It only counts when a pawn
+  /// of the side to move could actually capture there, so that positions
+  /// differing only in an unusable ep square hash (and repeat) identically.
+  int _epKey() {
+    if (_ep == -1) return 0;
+    final p = makePiece(_side, pawn);
+    final back = _side == white ? -16 : 16;
+    for (final d in const [-1, 1]) {
+      final s = _ep + back + d;
+      if (onBoard(s) && _sq[s] == p) return epFileKeys[fileOf(_ep)];
+    }
+    return 0;
+  }
+
+  /// Recomputes the hash from scratch. [hash] should always equal this.
+  int computeHash() {
+    var h = 0;
+    for (var i = 0; i < 64; i++) {
+      final s = from64(i);
+      if (_sq[s] != empty) h ^= pieceKeys[_sq[s] * 128 + s];
+    }
+    if (_side == black) h ^= sideKey;
+    h ^= castlingKeys[_castling];
+    return h ^ _epKey();
+  }
+
+  /// How many times the current position occurred before, counting only
+  /// positions since the last irreversible move (capture or pawn move).
+  int get repetitions {
+    var count = 0;
+    final n = _history.length;
+    for (var back = 2; back <= _halfmove && back <= n; back += 2) {
+      if (_history[n - back].hash == _hash) count++;
+    }
+    return count;
   }
 
   static int _parseCounter(String s, String fen, int min) {
@@ -376,10 +460,15 @@ class Board {
       capSq = m.to + (us == white ? -16 : 16);
       captured = _sq[capSq];
     }
-    _history.add(_Undo(m, captured, _castling, _ep, _halfmove));
+    _history.add(_Undo(m, captured, _castling, _ep, _halfmove, _hash));
+
+    var h = _hash ^ _epKey() ^ castlingKeys[_castling] ^ sideKey;
+    final placed = m.isPromotion ? makePiece(us, m.promotion) : piece;
+    h ^= pieceKeys[piece * 128 + m.from] ^ pieceKeys[placed * 128 + m.to];
+    if (captured != empty) h ^= pieceKeys[captured * 128 + capSq];
 
     if (m.isEnPassant) _sq[capSq] = empty;
-    _sq[m.to] = m.isPromotion ? makePiece(us, m.promotion) : piece;
+    _sq[m.to] = placed;
     _sq[m.from] = empty;
 
     if (pieceType(piece) == king) {
@@ -388,8 +477,10 @@ class Board {
         final kingSide = m.to > m.from;
         final rookFrom = kingSide ? m.from + 3 : m.from - 4;
         final rookTo = kingSide ? m.from + 1 : m.from - 1;
-        _sq[rookTo] = _sq[rookFrom];
+        final r = _sq[rookFrom];
+        _sq[rookTo] = r;
         _sq[rookFrom] = empty;
+        h ^= pieceKeys[r * 128 + rookFrom] ^ pieceKeys[r * 128 + rookTo];
       }
     }
 
@@ -399,7 +490,21 @@ class Board {
         (pieceType(piece) == pawn || captured != empty) ? 0 : _halfmove + 1;
     if (us == black) _fullmove++;
     _side = us ^ 1;
+    _hash = h ^ castlingKeys[_castling] ^ _epKey();
   }
+
+  /// Passes the turn without moving (a "null move"), used by search
+  /// heuristics. Must not be called while in check. Undo with [unmake].
+  void makeNull() {
+    _history.add(_Undo(_nullMove, empty, _castling, _ep, _halfmove, _hash));
+    _hash ^= _epKey() ^ sideKey;
+    _ep = -1;
+    _halfmove++;
+    if (_side == black) _fullmove++;
+    _side ^= 1;
+  }
+
+  static const Move _nullMove = Move(0, 0);
 
   /// Reverts the most recent [make]. Throws [StateError] if there is none.
   void unmake() {
@@ -412,6 +517,8 @@ class Board {
     _castling = u.castling;
     _ep = u.epSquare;
     _halfmove = u.halfmove;
+    _hash = u.hash;
+    if (identical(m, _nullMove)) return;
 
     final moved = m.isPromotion ? makePiece(us, pawn) : _sq[m.to];
     _sq[m.from] = moved;
