@@ -1,6 +1,6 @@
 name: dartchess
 description: A dependency-free chess library for Dart with legal move generation, FEN, and perft verification.
-version: 0.1.0
+version: 0.2.0
 repository: https://github.com/avohra25/dartchess
 
 environment:
